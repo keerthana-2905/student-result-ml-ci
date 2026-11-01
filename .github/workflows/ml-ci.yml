@@ -62,3 +62,37 @@ jobs:
           path: release_candidate/
           if-no-files-found: error
           retention-days: 7
+
+      - name: Build Docker image
+        run: docker build -t student-result-ml:${{ github.sha }} .
+
+      - name: Start Docker container
+        run: docker run -d --name student-result-ml-container -p 5000:5000 student-result-ml:${{ github.sha }}
+
+      - name: Check container health
+        run: |
+          for i in {1..15}; do
+            if curl -fsS http://localhost:5000/health; then
+              echo "Container is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs student-result-ml-container
+          exit 1
+
+      - name: Test prediction endpoint
+        run: |
+          response=$(curl -fsS -X POST http://localhost:5000/predict \
+            -H "Content-Type: application/json" \
+            -d '{"attendance":90,"internal_marks":85,"assignment_marks":88,"previous_score":80}')
+          echo "$response"
+          echo "$response" | grep -q "prediction"
+
+      - name: Show container logs
+        if: always()
+        run: docker logs student-result-ml-container || true
+
+      - name: Cleanup Docker container
+        if: always()
+        run: docker rm -f student-result-ml-container || true
